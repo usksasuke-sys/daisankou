@@ -1,0 +1,282 @@
+:root {
+  --paper: #efe6d8;
+  --card: #fbf6ee;
+  --ink: #1d2430;
+  --muted: #5e584e;
+  --line: #d9cebf;
+  --seal: #8d322c;
+  --seal-dark: #6f241f;
+  --good: #1d4a38;
+  --good-bg: #e5f0ea;
+  --open: #6d4a12;
+  --open-bg: #f8efd8;
+  --shadow: 0 10px 30px rgba(40, 32, 24, 0.08);
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: "Yu Gothic UI", "Yu Gothic", "Hiragino Sans", Meiryo, sans-serif;
+  font-size: 18px;
+  line-height: 1.65;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at top, rgba(255, 252, 247, 0.7), transparent 42%),
+    var(--paper);
+  padding:
+    env(safe-area-inset-top)
+    env(safe-area-inset-right)
+    env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+}
+
+button, textarea { font: inherit; color: inherit; }
+
+button {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible, textarea:focus-visible {
+  outline: 3px solid var(--seal);
+  outline-offset: 2px;
+}
+
+#app { min-height: 100vh; min-height: 100dvh; }
+
+.top {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  justify-content: space-between;
+  align-items: end;
+  padding: 16px 20px 12px;
+  background: rgba(239, 230, 216, 0.94);
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(8px);
+}
+
+.titles { min-width: 8rem; }
+
+.eyebrow, .summary-label, .fine {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+}
+
+.place-name, .game-title, .screen-title {
+  margin: 0;
+  font-size: 1.7rem;
+  line-height: 1.25;
+  font-weight: 700;
+}
+
+.actions, .stack { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.nav, .choice, .primary, .quiet-block, .spot, .person, .room {
+  border: 1px solid var(--line);
+  background: var(--card);
+  border-radius: 14px;
+  min-height: 48px;
+  padding: 12px 14px;
+  text-align: left;
+  box-shadow: none;
+}
+
+.nav { min-height: 44px; padding: 8px 12px; }
+
+.nav.quiet, .quiet-block {
+  background: transparent;
+  box-shadow: none;
+}
+
+.choice, .spot, .person, .primary, .quiet-block { width: 100%; }
+
+.choice { line-height: 1.45; }
+
+.primary {
+  background: var(--seal);
+  color: #fffaf7;
+  border-color: var(--seal-dark);
+  text-align: center;
+  font-weight: 700;
+}
+
+.choice:hover, .spot:hover, .person:hover, .room:hover, .nav:hover {
+  border-color: #b7aa98;
+}
+
+.choice.selected, .room.current {
+  border-color: var(--seal);
+  box-shadow: inset 0 0 0 1px var(--seal);
+}
+
+.sheet {
+  width: min(920px, calc(100% - 28px));
+  margin: 0 auto;
+  padding: 22px 0 48px;
+}
+
+.sheet.narrow { width: min(680px, calc(100% - 28px)); }
+
+.title-screen {
+  width: min(560px, calc(100% - 32px));
+  margin: 0 auto;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+}
+
+.seal {
+  width: 72px;
+  height: 72px;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--seal);
+  color: var(--seal);
+  border-radius: 8px;
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.lede, .lead { margin: 0; }
+
+.fine { margin-top: 8px; }
+
+.section {
+  margin: 26px 0 10px;
+  font-size: 0.95rem;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.person {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.person-name { font-weight: 700; }
+
+.person-caption, .seen {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.spot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.map-wrap { margin-bottom: 18px; }
+
+.map {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-areas:
+    "balcony meeting stairs"
+    "copy hall reception";
+  gap: 10px;
+}
+
+.room { min-height: 92px; text-align: center; font-weight: 700; }
+
+.room-balcony { grid-area: balcony; }
+.room-meeting { grid-area: meeting; }
+.room-stairs { grid-area: stairs; }
+.room-copy { grid-area: copy; }
+.room-hall { grid-area: hall; }
+.room-reception { grid-area: reception; }
+
+.map-note {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.prose p, .record p, .ending p { margin: 0 0 0.8em; }
+
+.prose p:last-child, .record p:last-child, .ending p:last-child { margin-bottom: 0; }
+
+.said, .record, .ending, .hint, .summary {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 16px 18px;
+  box-shadow: var(--shadow);
+}
+
+.said { border-left: 4px solid var(--seal); }
+
+.record {
+  background: #f3efe6;
+  font-variant-numeric: tabular-nums;
+}
+
+.stack { margin-top: 16px; }
+
+.fresh {
+  margin: 12px 0 0;
+  color: var(--good);
+  font-weight: 700;
+}
+
+.notes {
+  margin: 0;
+  padding-left: 1.2em;
+}
+
+.notes li { margin: 0 0 0.7em; }
+
+.notes li:last-child { margin-bottom: 0; }
+
+.memo-label {
+  display: block;
+  margin: 28px 0 8px;
+  font-weight: 700;
+}
+
+textarea {
+  width: 100%;
+  min-height: 140px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  resize: vertical;
+}
+
+.summary { margin-bottom: 10px; }
+
+.summary-text { margin: 2px 0 0; }
+
+.ending.true { background: var(--good-bg); border-color: #b7d2c6; }
+
+.ending.open { background: var(--open-bg); border-color: #ead7a8; color: var(--open); }
+
+.hint { margin-bottom: 10px; }
+
+.quiet-block { margin-top: 8px; text-align: center; }
+
+@media (max-width: 640px) {
+  body { font-size: 17px; }
+  .place-name, .game-title, .screen-title { font-size: 1.45rem; }
+  .room { min-height: 78px; padding: 10px 6px; font-size: 0.92rem; }
+  .sheet, .sheet.narrow, .title-screen { width: min(100% - 24px, 680px); }
+}
