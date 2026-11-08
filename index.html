@@ -3,12 +3,48 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#1d2430">
+  <meta name="theme-color" content="#1a1412">
   <title>第三項</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <div id="app"></div>
+  <div id="title" class="title">
+    <div class="title-card">
+      <p class="kicker">翌朝</p>
+      <h1>第三項</h1>
+      <p id="title-lead"></p>
+      <ol class="howto">
+        <li>受付の話を読み、「フロアへ」を押す。</li>
+        <li>見取り図の部屋を開き、気になる物を触る。</li>
+        <li>読んだ話と見た物は、「メモに残す」を押すまで調べたことにならない。</li>
+        <li>記録は「資料」。行き詰まったら「ヒント」。告発は、上のボタンから出す。</li>
+      </ol>
+      <button type="button" id="start">調べはじめる</button>
+      <label class="admin-toggle" for="admin-mode"><input type="checkbox" id="admin-mode">管理者モード</label>
+    </div>
+  </div>
+  <div id="app" class="app" hidden>
+    <header class="top">
+      <div>
+        <h1>第三項</h1>
+        <p id="phase">翌朝</p>
+      </div>
+      <div class="actions">
+        <button type="button" id="go-reception">受付</button>
+        <button type="button" id="go-floor">フロア</button>
+        <button type="button" id="go-files">資料</button>
+        <button type="button" id="go-hint">ヒント</button>
+        <button type="button" id="go-charge">告発</button>
+        <button type="button" id="go-solution" hidden>答え</button>
+        <button type="button" id="go-reset">最初から</button>
+      </div>
+    </header>
+    <div class="workspace">
+      <nav id="roster" class="roster" aria-label="話を聞ける人"></nav>
+      <main id="stage" class="stage"></main>
+      <aside id="notes" class="notes" aria-label="メモ"></aside>
+    </div>
+  </div>
   <script src="js/case.js"></script>
   <script src="js/game.js"></script>
 </body>

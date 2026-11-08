@@ -1,27 +1,31 @@
 "use strict";
 
-var KEY = "daisankou";
+var KEY = "daisankou-desk";
+var FILE_IDS = [
+  "card-night", "card-morning", "phone-in", "phone-out", "parking",
+  "door-plate", "door-log", "pin-book", "safe-log", "copy-job", "camera"
+];
+
 var state = load();
 
 function fresh() {
   return {
-    screen: "title",
-    place: "reception",
-    person: "",
+    started: false,
+    admin: false,
+    openedFloor: false,
+    view: "reception",
+    viewId: "",
     node: "",
-    inspect: "",
+    place: "reception",
     seen: {},
     heard: {},
     notes: [],
-    hints: 0,
     memo: "",
+    hints: 0,
     charge: { step: 1, person: "", alibi: "", method: "" },
     solved: false,
     revealed: false,
-    result: { closed: false, key: "" },
-    beforeScreen: "place",
-    confirm: "",
-    noteFresh: false
+    result: { closed: false, key: "" }
   };
 }
 
@@ -30,7 +34,7 @@ function load() {
   try {
     var saved = JSON.parse(localStorage.getItem(KEY) || "");
     if (!saved || !saved.seen || !saved.heard) return next;
-    ["screen", "place", "person", "node", "inspect", "hints", "memo", "solved", "revealed", "beforeScreen", "confirm"].forEach(function (key) {
+    ["started", "admin", "openedFloor", "view", "viewId", "node", "place", "memo", "hints", "solved", "revealed"].forEach(function (key) {
       if (saved[key] !== undefined && saved[key] !== null) next[key] = saved[key];
     });
     next.seen = saved.seen;
@@ -39,8 +43,6 @@ function load() {
     next.charge = saved.charge || next.charge;
     next.result = saved.result || next.result;
     if (!placeById(next.place)) next.place = "reception";
-    if (next.screen === "talk" && !CASE.nodes[next.node]) next.screen = "place";
-    if (next.screen === "inspect" && !spotById(next.inspect)) next.screen = "place";
   } catch (error) {
     return fresh();
   }
@@ -48,12 +50,9 @@ function load() {
 }
 
 function save() {
-  var freshNote = state.noteFresh;
-  state.noteFresh = false;
   try {
     localStorage.setItem(KEY, JSON.stringify(state));
   } catch (error) {}
-  state.noteFresh = freshNote;
 }
 
 function placeById(id) {
@@ -80,12 +79,6 @@ function personById(id) {
   return null;
 }
 
-function peopleHere(placeId) {
-  return CASE.people.filter(function (person) {
-    return person.place === placeId;
-  });
-}
-
 function labelOf(list, id) {
   for (var i = 0; i < list.length; i += 1) {
     if (list[i].id === id) return list[i].label;
@@ -95,6 +88,10 @@ function labelOf(list, id) {
 
 function hasFact(id) {
   return !!(state.seen[id] || state.heard[id]);
+}
+
+function kept(id) {
+  return !!(id && state.notes.indexOf(id) !== -1);
 }
 
 function visibleChoices(node) {
@@ -107,11 +104,10 @@ function visibleChoices(node) {
   });
 }
 
-function addNote(id) {
-  if (!id || !CASE.notes[id]) return false;
-  if (state.notes.indexOf(id) !== -1) return false;
-  state.notes.push(id);
-  return true;
+function roomSpots(place) {
+  return (place.spots || []).filter(function (spot) {
+    return FILE_IDS.indexOf(spot.id) === -1;
+  });
 }
 
 function el(tag, className, text) {
@@ -121,349 +117,409 @@ function el(tag, className, text) {
   return node;
 }
 
-function btn(text, onClick, className) {
-  var button = el("button", className || "choice", text);
+function btn(text, className, onClick) {
+  var button = el("button", className || "", text);
   button.type = "button";
   button.addEventListener("click", onClick);
   return button;
 }
 
-function paragraphs(parent, lines, className) {
+function paragraphs(parent, lines) {
   lines.forEach(function (line) {
-    parent.appendChild(el("p", className || "", line));
+    parent.appendChild(el("p", "", line));
   });
+}
+
+function paper() {
+  return el("article", "paper");
 }
 
 function render() {
   save();
-  var app = document.getElementById("app");
-  app.innerHTML = "";
-  if (state.screen === "title") renderTitle(app);
-  else if (state.screen === "talk") renderTalk(app);
-  else if (state.screen === "inspect") renderInspect(app);
-  else if (state.screen === "notebook") renderNotebook(app);
-  else if (state.screen === "accuse") renderAccuse(app);
-  else if (state.screen === "result") renderResult(app);
-  else if (state.screen === "hint") renderHint(app);
-  else if (state.screen === "confirm") renderConfirm(app);
-  else renderPlace(app);
-  window.scrollTo(0, 0);
-}
-
-function renderTitle(app) {
-  var main = el("main", "title-screen");
-  main.appendChild(el("div", "seal", "三"));
-  main.appendChild(el("p", "eyebrow", "シェアオフィス四階"));
-  main.appendChild(el("h1", "game-title", CASE.title));
-  main.appendChild(el("p", "lede", CASE.lead));
-  main.appendChild(btn("フロアへ", start, "primary"));
-  main.appendChild(el("p", "fine", "進行は、このブラウザの中に残ります。"));
-  app.appendChild(main);
-}
-
-function start() {
-  state.place = "reception";
-  showNode("intro");
-}
-
-function showNode(id) {
-  var node = CASE.nodes[id];
-  if (!node) {
-    state.screen = "place";
-    render();
+  document.getElementById("title").hidden = state.started;
+  document.getElementById("app").hidden = !state.started;
+  document.getElementById("go-solution").hidden = !state.admin;
+  if (!state.started) {
+    document.getElementById("title-lead").textContent = CASE.lead;
     return;
   }
-  state.node = id;
-  state.person = node.person;
-  state.heard[id] = true;
-  state.noteFresh = addNote(node.note);
-  state.screen = "talk";
-  render();
+  renderRoster();
+  renderStage();
+  renderNotes();
 }
 
-function closeTalk() {
-  state.screen = "place";
-  state.node = "";
-  render();
-}
-
-function go(placeId) {
-  state.place = placeId;
-  state.screen = "place";
-  var place = placeById(placeId);
-  var enter = place && place.enter;
-  if (enter && !state.seen[enter.unlessSeen] && !state.heard[enter.unlessHeard]) {
-    showNode(enter.node);
-    return;
-  }
-  render();
-}
-
-function inspect(id) {
-  var spot = spotById(id);
-  if (!spot) return;
-  state.inspect = id;
-  state.seen[id] = true;
-  state.noteFresh = addNote(spot.note);
-  state.screen = "inspect";
-  render();
-}
-
-function talkTo(personId) {
-  var person = personById(personId);
-  if (!person) return;
-  showNode(person.root);
-}
-
-function openScreen(name) {
-  state.screen = name;
-  render();
-}
-
-function ask(kind) {
-  if (state.screen !== "confirm") state.beforeScreen = state.screen;
-  state.confirm = kind;
-  state.screen = "confirm";
-  render();
-}
-
-function cancelAsk() {
-  state.screen = state.beforeScreen || "place";
-  render();
-}
-
-function resetGame() {
-  localStorage.removeItem(KEY);
-  state = fresh();
-  render();
-}
-
-function revealAnswer() {
-  state.revealed = true;
-  state.result = { closed: false, key: "answer" };
-  state.screen = "result";
-  render();
-}
-
-function openEnding() {
-  state.result = { closed: !!state.solved, key: state.solved ? "ending" : "answer" };
-  state.screen = "result";
-  render();
-}
-
-function openAccuse() {
-  state.charge = { step: 1, person: "", alibi: "", method: "" };
-  state.screen = "accuse";
-  render();
-}
-
-function topbar(parent) {
-  var bar = el("header", "top");
-  var titles = el("div", "titles");
-  var place = placeById(state.place);
-  titles.appendChild(el("p", "eyebrow", CASE.title));
-  titles.appendChild(el("h1", "place-name", place ? place.name : CASE.title));
-  bar.appendChild(titles);
-  var actions = el("div", "actions");
-  actions.appendChild(btn("移動", function () { go("hall"); }, "nav"));
-  actions.appendChild(btn("ノート", function () { openScreen("notebook"); }, "nav"));
-  actions.appendChild(btn("告発", function () { openAccuse(); }, "nav"));
-  actions.appendChild(btn("ヒント", function () { openScreen("hint"); }, "nav"));
-  if (state.solved || state.revealed) actions.appendChild(btn("結末", openEnding, "nav"));
-  actions.appendChild(btn("最初から", function () { ask("reset"); }, "nav quiet"));
-  bar.appendChild(actions);
-  parent.appendChild(bar);
-}
-
-function renderPlace(app) {
-  var place = placeById(state.place) || placeById("hall");
-  topbar(app);
-  var main = el("main", "sheet");
-  if (place.id === "hall") main.appendChild(renderMap());
-  main.appendChild(el("p", "lead", place.lead));
-  var people = peopleHere(place.id);
-  if (people.length) {
-    main.appendChild(el("h2", "section", "話せる人"));
-    var row = el("div", "stack");
-    people.forEach(function (person) {
-      var button = btn("", function () { talkTo(person.id); }, "person");
-      button.appendChild(el("span", "person-name", person.name));
-      button.appendChild(el("span", "person-caption", person.caption));
-      row.appendChild(button);
+function renderRoster() {
+  var roster = document.getElementById("roster");
+  roster.innerHTML = "";
+  roster.appendChild(el("h2", "", "話を聞ける人"));
+  CASE.people.forEach(function (person) {
+    var place = placeById(person.place);
+    var button = btn("", "person-btn" + (state.view === "person" && state.viewId === person.id ? " on" : ""), function () {
+      openPerson(person.id);
     });
-    main.appendChild(row);
-  }
-  if (place.spots && place.spots.length) {
-    main.appendChild(el("h2", "section", "調べる"));
-    var spots = el("div", "stack");
-    place.spots.forEach(function (spot) {
-      var button = btn(spot.title, function () { inspect(spot.id); }, "spot");
-      if (state.seen[spot.id]) button.appendChild(el("span", "seen", "見た"));
-      spots.appendChild(button);
-    });
-    main.appendChild(spots);
-  }
-  app.appendChild(main);
+    button.appendChild(el("span", "", person.name));
+    button.appendChild(el("small", "", person.caption + "・" + (place ? place.name : "")));
+    roster.appendChild(button);
+  });
 }
 
-function renderMap() {
-  var wrap = el("div", "map-wrap");
-  var map = el("div", "map");
+function renderStage() {
+  var stage = document.getElementById("stage");
+  stage.innerHTML = "";
+  if (state.view === "floor") stage.appendChild(renderFloor());
+  else if (state.view === "room") stage.appendChild(renderRoom());
+  else if (state.view === "spot") stage.appendChild(renderSpot());
+  else if (state.view === "files") stage.appendChild(renderFiles());
+  else if (state.view === "file") stage.appendChild(renderFile());
+  else if (state.view === "person") stage.appendChild(renderPerson());
+  else if (state.view === "hint") stage.appendChild(renderHint());
+  else if (state.view === "charge") stage.appendChild(renderCharge());
+  else if (state.view === "result") stage.appendChild(renderResult());
+  else if (state.view === "confirm") stage.appendChild(renderConfirm());
+  else stage.appendChild(renderReception());
+}
+
+function renderReception() {
+  var box = paper();
+  var intro = CASE.nodes.intro;
+  box.appendChild(el("h2", "", "受付"));
+  if (!state.openedFloor) {
+    paragraphs(box, intro.say);
+    box.appendChild(btn("フロアへ", "primary", openFloor));
+  } else {
+    var place = placeById("reception");
+    paragraphs(box, [place.lead, "棚の記録は、資料にまとめてあります。"]);
+    box.appendChild(btn("資料を開く", "primary", function () { setView("files"); }));
+  }
+  return box;
+}
+
+function renderFloor() {
+  var box = paper();
+  box.appendChild(el("h2", "", "フロア"));
+  box.appendChild(el("p", "map-note", "西バルコニーから会議室の入口まで、徒歩一分。正面の入口は受付です。"));
+  var map = el("div", "floor");
   CASE.places.forEach(function (place) {
-    var button = btn(place.name, function () { go(place.id); }, "room room-" + place.area);
-    if (place.id === "hall") button.classList.add("current");
+    var button = btn(place.name, "room-btn room-" + place.area + (state.place === place.id ? " on" : ""), function () {
+      openRoom(place.id);
+    });
     map.appendChild(button);
   });
-  wrap.appendChild(map);
-  wrap.appendChild(el("p", "map-note", "西バルコニーから会議室の入口まで、徒歩一分。正面の入口は受付です。"));
-  return wrap;
+  box.appendChild(map);
+  return box;
 }
 
-function renderInspect(app) {
-  var spot = spotById(state.inspect);
-  var main = el("main", "sheet narrow");
-  if (!spot) {
-    main.appendChild(btn("戻る", function () { state.screen = "place"; render(); }, "primary"));
-    app.appendChild(main);
-    return;
+function renderRoom() {
+  var place = placeById(state.viewId) || placeById("hall");
+  var box = paper();
+  box.appendChild(el("h2", "", place.name));
+  box.appendChild(el("p", "", place.lead));
+  var spots = roomSpots(place);
+  if (!spots.length) {
+    box.appendChild(el("p", "", "この部屋の記録は、資料にあります。"));
+    box.appendChild(btn("資料を開く", "primary", function () { setView("files"); }));
   }
-  main.appendChild(el("p", "eyebrow", "調べる"));
-  main.appendChild(el("h1", "screen-title", spot.title));
-  var body = el("div", spot.kind === "record" ? "record" : "prose");
+  spots.forEach(function (spot) {
+    var button = btn(spot.title + (state.seen[spot.id] ? "　見た" : ""), "spot-btn", function () {
+      openSpot(spot.id);
+    });
+    box.appendChild(button);
+  });
+  box.appendChild(btn("見取り図へ", "quiet", function () { setView("floor"); }));
+  return box;
+}
+
+function renderSpot() {
+  var spot = spotById(state.viewId);
+  var box = paper();
+  if (!spot) return box;
+  state.seen[spot.id] = true;
+  box.appendChild(el("p", "role", "調べる"));
+  box.appendChild(el("h2", "", spot.title));
+  var body = el("div", spot.kind === "record" ? "record" : "");
   paragraphs(body, spot.body);
-  main.appendChild(body);
-  if (state.noteFresh) main.appendChild(el("p", "fresh", "ノートに残しました。"));
-  main.appendChild(btn("部屋へ戻る", function () { state.screen = "place"; render(); }, "primary"));
-  app.appendChild(main);
+  box.appendChild(body);
+  box.appendChild(keepButton(spot.note));
+  box.appendChild(btn("部屋へ戻る", "quiet", function () {
+    state.view = "room";
+    state.viewId = state.place;
+    render();
+  }));
+  return box;
 }
 
-function renderTalk(app) {
+function renderFiles() {
+  var box = paper();
+  box.appendChild(el("h2", "", "資料"));
+  box.appendChild(el("p", "", "昨夜と今朝の記録です。一枚ずつ開いてください。"));
+  FILE_IDS.forEach(function (id) {
+    var spot = spotById(id);
+    if (!spot) return;
+    box.appendChild(btn(spot.title + (state.seen[id] ? "　見た" : ""), "file-btn" + (state.viewId === id ? " on" : ""), function () {
+      openFile(id);
+    }));
+  });
+  return box;
+}
+
+function renderFile() {
+  var spot = spotById(state.viewId);
+  var box = paper();
+  if (!spot) return box;
+  state.seen[spot.id] = true;
+  box.appendChild(el("p", "role", "資料"));
+  box.appendChild(el("h2", "", spot.title));
+  var body = el("div", "record");
+  paragraphs(body, spot.body);
+  box.appendChild(body);
+  box.appendChild(keepButton(spot.note));
+  box.appendChild(btn("資料の一覧へ", "quiet", function () { setView("files"); }));
+  return box;
+}
+
+function renderPerson() {
   var node = CASE.nodes[state.node];
-  var person = personById(state.person);
-  var main = el("main", "sheet narrow");
-  if (!node || !person) {
-    main.appendChild(btn("戻る", closeTalk, "primary"));
-    app.appendChild(main);
-    return;
-  }
-  main.appendChild(el("p", "eyebrow", person.caption));
-  main.appendChild(el("h1", "screen-title", person.name));
-  var body = el("div", "prose said");
-  paragraphs(body, node.say);
-  main.appendChild(body);
-  if (state.noteFresh) main.appendChild(el("p", "fresh", "ノートに残しました。"));
-  var choices = el("div", "stack");
+  var person = personById(state.viewId) || (node && personById(node.person));
+  var box = paper();
+  if (!node || !person) return box;
+  state.heard[state.node] = true;
+  box.appendChild(el("p", "role", person.caption));
+  box.appendChild(el("h2", "", person.name));
+  var said = el("div", "said");
+  paragraphs(said, node.say);
+  box.appendChild(said);
+  if (node.note) box.appendChild(keepButton(node.note, "この話をメモに残す"));
   visibleChoices(node).forEach(function (choice) {
-    choices.appendChild(btn(choice.label, function () {
+    box.appendChild(btn(choice.label, "choice", function () {
       if (choice.exit) closeTalk();
       else if (choice.next) showNode(choice.next);
     }));
   });
-  main.appendChild(choices);
-  app.appendChild(main);
+  return box;
 }
 
-function renderNotebook(app) {
-  topbar(app);
-  var main = el("main", "sheet narrow");
-  main.appendChild(el("h1", "screen-title", "ノート"));
-  if (!state.notes.length) {
-    main.appendChild(el("p", "lead", "まだ何も残していません。部屋の物を調べると、ここに残ります。"));
+function renderHint() {
+  var box = paper();
+  box.appendChild(el("h2", "", "ヒント"));
+  if (!state.hints) box.appendChild(el("p", "", "ヒントは三つまでです。"));
+  for (var i = 0; i < state.hints; i += 1) {
+    var block = el("div", "hint");
+    block.appendChild(el("p", "summary-label", String(i + 1)));
+    block.appendChild(el("p", "", CASE.hints[i]));
+    box.appendChild(block);
   }
+  if (state.hints < CASE.hints.length) {
+    box.appendChild(btn(state.hints ? "次のヒント" : "一つ目を見る", "primary", function () {
+      state.hints += 1;
+      render();
+    }));
+  }
+  return box;
+}
+
+function renderCharge() {
+  var box = paper();
+  var charge = state.charge;
+  box.appendChild(el("p", "role", "告発"));
+  if (charge.step === 1) {
+    box.appendChild(el("h2", "", "誰が入れ替えましたか"));
+    choiceList(box, CASE.charges.people, charge.person, function (id) {
+      charge.person = id;
+      charge.step = 2;
+      render();
+    });
+  } else if (charge.step === 2) {
+    box.appendChild(el("h2", "", "崩れる説明はどれですか"));
+    box.appendChild(el("p", "", "記録と合わない説明を選んでください。"));
+    choiceList(box, CASE.charges.alibis, charge.alibi, function (id) {
+      charge.alibi = id;
+      charge.step = 3;
+      render();
+    });
+  } else if (charge.step === 3) {
+    box.appendChild(el("h2", "", "手口はどれですか"));
+    choiceList(box, CASE.charges.methods, charge.method, function (id) {
+      charge.method = id;
+      charge.step = 4;
+      render();
+    });
+  } else {
+    box.appendChild(el("h2", "", "この読みで告発します"));
+    box.appendChild(summary("人", labelOf(CASE.charges.people, charge.person)));
+    box.appendChild(summary("崩れる説明", labelOf(CASE.charges.alibis, charge.alibi)));
+    box.appendChild(summary("手口", labelOf(CASE.charges.methods, charge.method)));
+    box.appendChild(btn("告発する", "primary", submitCharge));
+  }
+  if (charge.step > 1) {
+    box.appendChild(btn("一つ戻る", "quiet", function () {
+      charge.step -= 1;
+      render();
+    }));
+  }
+  return box;
+}
+
+function renderResult() {
+  var box = paper();
+  var key = state.result.key;
+  var solved = state.result.closed || key === "ending" || key === "answer";
+  box.appendChild(el("h2", "", key === "answer" ? "答え" : (solved ? "閉じました" : "まだ閉じません")));
+  var card = el("div", solved ? "ending true" : "ending open");
+  if (solved) {
+    card.appendChild(summary("人", labelOf(CASE.charges.people, CASE.answer.person)));
+    card.appendChild(summary("崩れる説明", labelOf(CASE.charges.alibis, CASE.answer.alibi)));
+    card.appendChild(summary("手口", labelOf(CASE.charges.methods, CASE.answer.method)));
+    paragraphs(card, CASE.ending);
+  } else {
+    card.appendChild(el("p", "", CASE.miss[key] || CASE.miss.remain));
+  }
+  box.appendChild(card);
+  if (!solved && key !== "answer") {
+    box.appendChild(btn("選び直す", "primary", function () {
+      state.charge.step = 4;
+      setView("charge");
+    }));
+  }
+  return box;
+}
+
+function renderConfirm() {
+  var box = paper();
+  box.appendChild(el("h2", "", "最初から"));
+  box.appendChild(el("p", "", "調べたもの、会話、メモ、ヒントを消します。"));
+  box.appendChild(btn("消す", "primary", resetGame));
+  box.appendChild(btn("やめる", "quiet", function () { setView(state.openedFloor ? "floor" : "reception"); }));
+  return box;
+}
+
+function renderNotes() {
+  var notes = document.getElementById("notes");
+  var memoValue = state.memo;
+  notes.innerHTML = "";
+  notes.appendChild(el("h2", "", "メモ"));
+  if (!state.notes.length) notes.appendChild(el("p", "empty", "まだ何も残していません。"));
   CASE.groups.forEach(function (group) {
     var items = state.notes.filter(function (id) {
       return CASE.notes[id] && CASE.notes[id].group === group;
     });
     if (!items.length) return;
-    main.appendChild(el("h2", "section", group));
-    var list = el("ul", "notes");
+    notes.appendChild(el("p", "group-label", group));
+    var list = el("ul", "");
     items.forEach(function (id) {
       list.appendChild(el("li", "", CASE.notes[id].text));
     });
-    main.appendChild(list);
+    notes.appendChild(list);
   });
   var label = el("label", "memo-label", "自分のメモ");
   label.setAttribute("for", "memo");
-  main.appendChild(label);
+  notes.appendChild(label);
   var memo = el("textarea");
   memo.id = "memo";
-  memo.value = state.memo;
+  memo.value = memoValue;
   memo.placeholder = "気づいたことを書けます";
   memo.addEventListener("input", function () {
     state.memo = memo.value;
     save();
   });
-  main.appendChild(memo);
-  app.appendChild(main);
-}
-
-function renderAccuse(app) {
-  var main = el("main", "sheet narrow");
-  var charge = state.charge;
-  main.appendChild(el("p", "eyebrow", "告発"));
-  if (charge.step === 1) {
-    main.appendChild(el("h1", "screen-title", "誰が入れ替えましたか"));
-    main.appendChild(choiceList(CASE.charges.people, charge.person, function (id) {
-      charge.person = id;
-      charge.step = 2;
-      render();
-    }));
-  } else if (charge.step === 2) {
-    main.appendChild(el("h1", "screen-title", "崩れる説明はどれですか"));
-    main.appendChild(el("p", "lead", "記録と合わない説明を選んでください。"));
-    main.appendChild(choiceList(CASE.charges.alibis, charge.alibi, function (id) {
-      charge.alibi = id;
-      charge.step = 3;
-      render();
-    }));
-  } else if (charge.step === 3) {
-    main.appendChild(el("h1", "screen-title", "手口はどれですか"));
-    main.appendChild(choiceList(CASE.charges.methods, charge.method, function (id) {
-      charge.method = id;
-      charge.step = 4;
-      render();
-    }));
-  } else {
-    main.appendChild(el("h1", "screen-title", "この読みで告発します"));
-    main.appendChild(summary("人", labelOf(CASE.charges.people, charge.person)));
-    main.appendChild(summary("崩れる説明", labelOf(CASE.charges.alibis, charge.alibi)));
-    main.appendChild(summary("手口", labelOf(CASE.charges.methods, charge.method)));
-    main.appendChild(btn("告発する", submitCharge, "primary"));
-  }
-  if (charge.step > 1) {
-    main.appendChild(btn("一つ戻る", function () {
-      charge.step -= 1;
-      render();
-    }, "quiet-block"));
-  }
-  main.appendChild(btn("フロアへ戻る", function () { state.screen = "place"; render(); }, "quiet-block"));
-  main.appendChild(btn("答えを見る", function () { ask("answer"); }, "quiet-block"));
-  app.appendChild(main);
-}
-
-function choiceList(list, selected, onPick) {
-  var wrap = el("div", "stack");
-  list.forEach(function (item) {
-    var button = btn(item.label, function () { onPick(item.id); });
-    if (item.id === selected) button.classList.add("selected");
-    wrap.appendChild(button);
-  });
-  return wrap;
+  notes.appendChild(memo);
 }
 
 function summary(label, text) {
   var wrap = el("div", "summary");
   wrap.appendChild(el("p", "summary-label", label));
-  wrap.appendChild(el("p", "summary-text", text));
+  wrap.appendChild(el("p", "", text));
   return wrap;
+}
+
+function choiceList(parent, list, selected, onPick) {
+  list.forEach(function (item) {
+    var button = btn(item.label, "choice" + (item.id === selected ? " on" : ""), function () { onPick(item.id); });
+    parent.appendChild(button);
+  });
+}
+
+function keepButton(noteId, label) {
+  if (!noteId) return el("span", "");
+  if (kept(noteId)) return el("p", "kept", "メモに残してあります。");
+  return btn(label || "メモに残す", "keep", function () {
+    if (state.notes.indexOf(noteId) === -1) state.notes.push(noteId);
+    render();
+  });
+}
+
+function setView(view, id) {
+  state.view = view;
+  if (id !== undefined) state.viewId = id;
+  render();
+}
+
+function openFloor() {
+  state.openedFloor = true;
+  state.view = "floor";
+  state.viewId = "";
+  render();
+}
+
+function openRoom(id) {
+  var place = placeById(id);
+  state.place = id;
+  var enter = place && place.enter;
+  if (enter && !state.seen[enter.unlessSeen] && !state.heard[enter.unlessHeard]) {
+    showNode(enter.node);
+    return;
+  }
+  state.view = "room";
+  state.viewId = id;
+  render();
+}
+
+function openSpot(id) {
+  var spot = spotById(id);
+  if (!spot) return;
+  state.seen[id] = true;
+  state.view = "spot";
+  state.viewId = id;
+  render();
+}
+
+function openFile(id) {
+  state.seen[id] = true;
+  state.view = "file";
+  state.viewId = id;
+  render();
+}
+
+function openPerson(id) {
+  var person = personById(id);
+  if (!person) return;
+  showNode(person.root);
+}
+
+function showNode(id) {
+  var node = CASE.nodes[id];
+  if (!node) {
+    setView("floor");
+    return;
+  }
+  state.node = id;
+  state.view = "person";
+  state.viewId = node.person;
+  state.heard[id] = true;
+  render();
+}
+
+function closeTalk() {
+  var person = personById(state.viewId);
+  var placeId = person ? person.place : state.place;
+  state.node = "";
+  openRoom(placeId);
 }
 
 function submitCharge() {
   var judged = judge(state.charge.person, state.charge.alibi, state.charge.method);
   state.result = { closed: judged.closed, key: judged.key };
   if (judged.closed) state.solved = true;
-  state.screen = "result";
-  render();
+  setView("result");
 }
 
 function judge(person, alibi, method) {
@@ -482,67 +538,35 @@ function judge(person, alibi, method) {
   return { closed: false, key: "remain" };
 }
 
-function renderResult(app) {
-  var main = el("main", "sheet narrow");
-  var key = state.result.key;
-  var solved = state.result.closed || key === "ending" || key === "answer";
-  main.appendChild(el("h1", "screen-title", key === "answer" ? "答え" : (solved ? "閉じました" : "まだ閉じません")));
-  var card = el("div", solved ? "ending true" : "ending open");
-  if (solved) {
-    card.appendChild(summary("人", labelOf(CASE.charges.people, CASE.answer.person)));
-    card.appendChild(summary("崩れる説明", labelOf(CASE.charges.alibis, CASE.answer.alibi)));
-    card.appendChild(summary("手口", labelOf(CASE.charges.methods, CASE.answer.method)));
-    paragraphs(card, CASE.ending);
-  } else {
-    card.appendChild(el("p", "", CASE.miss[key] || CASE.miss.remain));
-  }
-  main.appendChild(card);
-  if (!solved && key !== "answer") {
-    main.appendChild(btn("選び直す", function () {
-      state.charge.step = 4;
-      state.screen = "accuse";
-      render();
-    }, "primary"));
-  }
-  main.appendChild(btn("フロアへ戻る", function () { state.screen = "place"; render(); }, solved ? "primary" : "quiet-block"));
-  app.appendChild(main);
+function resetGame() {
+  var admin = state.admin;
+  localStorage.removeItem(KEY);
+  state = fresh();
+  state.admin = admin;
+  render();
 }
 
-function renderHint(app) {
-  topbar(app);
-  var main = el("main", "sheet narrow");
-  main.appendChild(el("h1", "screen-title", "ヒント"));
-  if (!state.hints) {
-    main.appendChild(el("p", "lead", "ヒントは三つまでです。"));
-  }
-  for (var i = 0; i < state.hints; i += 1) {
-    var block = el("div", "hint");
-    block.appendChild(el("p", "summary-label", String(i + 1)));
-    block.appendChild(el("p", "", CASE.hints[i]));
-    main.appendChild(block);
-  }
-  if (state.hints < CASE.hints.length) {
-    main.appendChild(btn(state.hints ? "次のヒント" : "一つ目を見る", function () {
-      state.hints += 1;
-      render();
-    }, "primary"));
-  }
-  app.appendChild(main);
+function startGame() {
+  state.started = true;
+  state.admin = !!document.getElementById("admin-mode").checked;
+  state.view = "reception";
+  render();
 }
 
-function renderConfirm(app) {
-  var main = el("main", "sheet narrow");
-  if (state.confirm === "answer") {
-    main.appendChild(el("h1", "screen-title", "答えを見ます"));
-    main.appendChild(el("p", "lead", "告発の前でも、三つの答えと、そのあとの文章を表示します。"));
-    main.appendChild(btn("見る", revealAnswer, "primary"));
-  } else {
-    main.appendChild(el("h1", "screen-title", "最初から"));
-    main.appendChild(el("p", "lead", "調べたもの、会話、メモ、ヒントを消します。"));
-    main.appendChild(btn("消す", resetGame, "primary"));
-  }
-  main.appendChild(btn("やめる", cancelAsk, "quiet-block"));
-  app.appendChild(main);
-}
+document.getElementById("start").addEventListener("click", startGame);
+document.getElementById("go-reception").addEventListener("click", function () { setView("reception"); });
+document.getElementById("go-floor").addEventListener("click", openFloor);
+document.getElementById("go-files").addEventListener("click", function () { setView("files"); });
+document.getElementById("go-hint").addEventListener("click", function () { setView("hint"); });
+document.getElementById("go-charge").addEventListener("click", function () {
+  state.charge = { step: 1, person: "", alibi: "", method: "" };
+  setView("charge");
+});
+document.getElementById("go-solution").addEventListener("click", function () {
+  state.revealed = true;
+  state.result = { closed: false, key: "answer" };
+  setView("result");
+});
+document.getElementById("go-reset").addEventListener("click", function () { setView("confirm"); });
 
 document.addEventListener("DOMContentLoaded", render);
